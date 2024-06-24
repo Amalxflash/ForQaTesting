@@ -307,29 +307,36 @@ function extractPageContent(doc) {
     header: []
   };
 
-  // Regular expression to match the pattern "Slide %{start} of %{total}. %{slideTitle}"
-  const slidePattern = /Slide %\{start\} of %\{total\}\. %\{slideTitle\}/;
+   // Regular expression to match the pattern "Slide %{start} of %{total}. %{slideTitle}"
+   const slidePattern = /Slide %\{start\} of %\{total\}\. %\{slideTitle\}/;
 
-  // Extracting text
-  const uniqueTexts = new Set();
-  const elements = doc.querySelectorAll('h1, h2, h3, h4, h5, h6, p, a, div, span, strong');
-
-  elements.forEach(el => {
-    // Skip elements with class "sr-only" or "btn"
-    if (el.classList.contains('sr-only') || el.classList.contains('btn')) {
-      return;
-    }
-
-    const text = Array.from(el.childNodes)
-                      .filter(node => node.nodeType === Node.TEXT_NODE || node.nodeName === 'SPAN')
-                      .map(node => node.textContent.replace(/\n/g, '').replace(/\t/g, '').trim())
-                      .join(' ').trim();
-
-    if (text !== '' && !uniqueTexts.has(text) && !text.includes("This is the Trace Id:") && !slidePattern.test(text)) {
-      content.textFields.push(text);
-      uniqueTexts.add(text);
-    }
-  });
+   // Extracting text
+   const uniqueTexts = new Set();
+   const elements = doc.querySelectorAll('h1, h2, h3, h4, h5, h6, p, a, div, span, strong');
+ 
+   elements.forEach(el => {
+     // Skip elements with class "sr-only", "carousel", or "sr-only-focusable"
+     if (el.classList.contains('sr-only') || el.classList.contains('carousel') || el.classList.contains('sr-only-focusable')) {
+       return;
+     }
+ 
+     const textParts = Array.from(el.childNodes)
+       .filter(node => node.nodeType === Node.TEXT_NODE || node.nodeName === 'SPAN' || node.nodeName === 'A')
+       .map(node => {
+         if (node.nodeType === Node.TEXT_NODE) {
+           return node.textContent.replace(/\n/g, '').replace(/\t/g, '').trim();
+         } else {
+           return node.textContent.replace(/\n/g, '').replace(/\t/g, '').trim();
+         }
+       });
+ 
+     textParts.forEach(text => {
+       if (text !== '' && !uniqueTexts.has(text) && !text.includes("This is the Trace Id:") && !slidePattern.test(text)) {
+         content.textFields.push(text);
+         uniqueTexts.add(text);
+       }
+     });
+   });
 
   // Extracting aria
   doc.querySelectorAll('[aria-label]').forEach(el => {
@@ -421,10 +428,18 @@ function displayTable(tableId, currentData, targetData, keyName, valueName, isAr
       const targetValue = targetItem[valueName];
       const targetKey = targetItem[keyName];
 
-      if (currentKey === targetKey && currentValue === targetValue) {
-        matchedTargetIndex = i;
-        matchedIndices.add(i);
-        break;
+      if (isAria) {
+        if (currentItem.link === targetItem.link || currentItem.label === targetItem.label) {
+          matchedTargetIndex = i;
+          matchedIndices.add(i);
+          break;
+        }
+      } else {
+        if (currentKey === targetKey && currentValue === targetValue) {
+          matchedTargetIndex = i;
+          matchedIndices.add(i);
+          break;
+        }
       }
     }
 
@@ -444,11 +459,11 @@ function displayTable(tableId, currentData, targetData, keyName, valueName, isAr
         targetCell.style.backgroundColor = 'lightgreen';
       }
     } else {
-      currentCell.innerText = isAria ? formatAria(currentItem, targetData[matchedTargetIndex]) : 
+      currentCell.innerHTML = isAria ? formatAria(currentItem, targetData[matchedTargetIndex]) : 
                                (isImage ? formatImage(currentItem) : 
                                (isMeta ? formatMeta(currentItem) : JSON.stringify(currentItem)));
 
-      targetCell.innerText = matchedTargetIndex !== -1 ? 
+      targetCell.innerHTML = matchedTargetIndex !== -1 ? 
                                (isAria ? formatAria(targetData[matchedTargetIndex], currentItem) :
                                (isImage ? formatImage(targetData[matchedTargetIndex]) :
                                (isMeta ? formatMeta(targetData[matchedTargetIndex]) :
@@ -515,11 +530,17 @@ function alignTextFields(currentTexts, targetTexts) {
 }
 
 function formatAria(ariaItem, targetItem) {
-  const isTargetDifferent = targetItem && (ariaItem.link !== targetItem.link || ariaItem.target !== targetItem.target);
-  
+  if (!targetItem) {
+    return `Link: ${ariaItem.link}, Label: ${ariaItem.label}, Target: ${ariaItem.target}`;
+  }
+
+  const isLinkDifferent = ariaItem.link !== targetItem.link;
+  const isLabelDifferent = ariaItem.label !== targetItem.label;
+  const isTargetDifferent = ariaItem.target !== targetItem.target;
+
   return `{
-    "Link": "${ariaItem.link}",
-    "Label": "${ariaItem.label}",
+    "Link": "${isLinkDifferent ? '<span style="color: red;">' + ariaItem.link + '</span>' : ariaItem.link}",
+    "Label": "${isLabelDifferent ? '<span style="color: red;">' + ariaItem.label + '</span>' : ariaItem.label}",
     "Target": "${isTargetDifferent ? '<span style="color: red;">' + ariaItem.target + '</span>' : ariaItem.target}"
   }`;
 }
